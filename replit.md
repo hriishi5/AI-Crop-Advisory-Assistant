@@ -1,6 +1,6 @@
-# [Project name]
+# KisanSaathi Crop Advisory
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+KisanSaathi helps farmers manage fields and receive structured crop planning and plant-health guidance.
 
 ## Run & Operate
 
@@ -10,6 +10,7 @@ _Replace the heading above with the project's name, and this line with one sente
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
+- Required secret: `SESSION_SECRET` and `GEMINI_API_KEY`
 
 ## Stack
 
@@ -22,15 +23,26 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/agri-advisory/` — React/Vite farmer-facing app and responsive UI
+- `artifacts/api-server/src/routes/app.ts` — authenticated REST routes and ownership checks
+- `artifacts/api-server/src/services/ai.ts` — Gemini structured-output integration and retry handling
+- `lib/db/src/schema/index.ts` — Drizzle schema for farmers, farms, advisories, and diagnostics
+- `lib/api-spec/openapi.yaml` — source of truth for generated API hooks and Zod contracts
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Cookie-based JWT sessions are used because the original product brief explicitly requires HTTP-only JWT cookies; the server uses the workspace session secret.
+- Farm-scoped resources always filter by the authenticated farmer ID in the same query, so foreign IDs resolve as not found.
+- Gemini is called server-side with JSON output mode, a 10-second timeout, and one retry; malformed output is never persisted.
+- Archived farms are hidden from the active farm list while their advisory and diagnostic history remains readable.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Public landing, registration, login, and profile management
+- Farm create/edit/archive with soil and irrigation context
+- Structured crop advisories with ranked crops, stage plans, risks, and confidence
+- Structured pest/disease diagnostics with treatment and prevention guidance
+- Dashboard summary and filterable combined history
 
 ## User preferences
 

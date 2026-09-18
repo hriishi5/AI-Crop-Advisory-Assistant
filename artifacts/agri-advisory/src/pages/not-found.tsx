@@ -1,0 +1,6 @@
+import { ArrowLeft, Leaf } from 'lucide-react';
+import { Link } from 'wouter';
+
+export default function NotFound() {
+  return <div className="grid min-h-[100dvh] place-items-center bg-background px-5"><div className="w-full max-w-xl text-center"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-primary text-secondary"><Leaf size={25} /></div><div className="mt-10 font-mono-app text-[11px] uppercase tracking-[.22em] text-accent">Field boundary / 404</div><h1 className="mt-4 font-display text-[clamp(4rem,12vw,8rem)] leading-none tracking-[-.07em]">Off the map.</h1><p className="mx-auto mt-5 max-w-sm text-sm leading-6 text-muted-foreground">That page is not in this field register. Let’s head back to a place with better coordinates.</p><Link href="/" className="mt-8 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3.5 text-sm font-bold text-primary-foreground transition hover:brightness-110" data-testid="link-return-home"><ArrowLeft size={16} /> Return to KisanSaathi</Link></div></div>;
+}

@@ -1,20 +1,85 @@
-// Export your models here. Add one export per file
-// export * from "./posts";
-//
-// Each model/table should ideally be split into different files.
-// Each model/table should define a Drizzle table, insert schema, and types:
-//
-//   import { pgTable, text, serial } from "drizzle-orm/pg-core";
-//   import { createInsertSchema } from "drizzle-zod";
-//   import { z } from "zod/v4";
-//
-//   export const postsTable = pgTable("posts", {
-//     id: serial("id").primaryKey(),
-//     title: text("title").notNull(),
-//   });
-//
-//   export const insertPostSchema = createInsertSchema(postsTable).omit({ id: true });
-//   export type InsertPost = z.infer<typeof insertPostSchema>;
-//   export type Post = typeof postsTable.$inferSelect;
+import {
+  boolean,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 
-export {}
+export const farmers = pgTable("farmers", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  fullName: varchar("full_name", { length: 120 }).notNull(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  phone: varchar("phone", { length: 20 }),
+  primaryLanguage: varchar("primary_language", { length: 40 }).notNull().default("en"),
+  defaultState: varchar("default_state", { length: 80 }),
+  defaultDistrict: varchar("default_district", { length: 80 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const farms = pgTable("farms", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  farmerId: uuid("farmer_id").notNull().references(() => farmers.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 120 }).notNull(),
+  village: varchar("village", { length: 120 }),
+  district: varchar("district", { length: 80 }),
+  state: varchar("state", { length: 80 }),
+  gpsLat: numeric("gps_lat", { precision: 9, scale: 6 }),
+  gpsLng: numeric("gps_lng", { precision: 9, scale: 6 }),
+  soilType: varchar("soil_type", { length: 30 }).notNull(),
+  areaAcres: numeric("area_acres", { precision: 8, scale: 2 }).notNull(),
+  primaryIrrigation: varchar("primary_irrigation", { length: 30 }).notNull(),
+  isArchived: boolean("is_archived").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const cropAdvisories = pgTable("crop_advisories", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  farmId: uuid("farm_id").notNull().references(() => farms.id, { onDelete: "cascade" }),
+  farmerId: uuid("farmer_id").notNull().references(() => farmers.id, { onDelete: "cascade" }),
+  season: varchar("season", { length: 10 }).notNull(),
+  soilTypeUsed: varchar("soil_type_used", { length: 30 }).notNull(),
+  landAreaAcresUsed: numeric("land_area_acres_used", { precision: 8, scale: 2 }).notNull(),
+  irrigationUsed: varchar("irrigation_used", { length: 30 }).notNull(),
+  budgetTier: varchar("budget_tier", { length: 10 }).notNull(),
+  previousCrop: varchar("previous_crop", { length: 80 }),
+  knownSoilIssues: text("known_soil_issues").array().notNull().default([]),
+  farmerGoal: varchar("farmer_goal", { length: 30 }).notNull(),
+  additionalNotes: text("additional_notes"),
+  aiRawResponse: jsonb("ai_raw_response").notNull(),
+  recommendedCrops: jsonb("recommended_crops").notNull(),
+  fertilizerPlan: jsonb("fertilizer_plan").notNull(),
+  irrigationPlan: jsonb("irrigation_plan").notNull(),
+  riskFactors: jsonb("risk_factors").notNull(),
+  confidenceScore: numeric("confidence_score", { precision: 3, scale: 2 }).notNull(),
+  modelVersion: varchar("model_version", { length: 60 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const pestDiagnostics = pgTable("pest_diagnostics", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  farmId: uuid("farm_id").notNull().references(() => farms.id, { onDelete: "cascade" }),
+  farmerId: uuid("farmer_id").notNull().references(() => farmers.id, { onDelete: "cascade" }),
+  affectedCrop: varchar("affected_crop", { length: 80 }).notNull(),
+  growthStage: varchar("growth_stage", { length: 20 }).notNull(),
+  symptomCategory: varchar("symptom_category", { length: 30 }),
+  symptomDescription: text("symptom_description").notNull(),
+  affectedPlantPart: text("affected_plant_part").array().notNull(),
+  daysSinceSymptomsAppeared: numeric("days_since_symptoms", { precision: 6, scale: 0 }),
+  weatherRecent: varchar("weather_recent", { length: 20 }),
+  aiRawResponse: jsonb("ai_raw_response").notNull(),
+  likelyDiagnosis: varchar("likely_diagnosis", { length: 150 }).notNull(),
+  confidenceScore: numeric("confidence_score", { precision: 3, scale: 2 }).notNull(),
+  possibleCauses: jsonb("possible_causes").notNull(),
+  treatmentPlan: jsonb("treatment_plan").notNull(),
+  preventionTips: jsonb("prevention_tips").notNull(),
+  isResolved: boolean("is_resolved").notNull().default(false),
+  modelVersion: varchar("model_version", { length: 60 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "KisanSaathi Crop Advisory"
+description = "A mobile-first crop advisory assistant for farmers and extension workers, combining farm records, structured seasonal recommendations, and plant health diagnostics in one trusted workspace."
+version = "1.0.0"
+id = "artifacts/agri-advisory"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19761
+
+[services.development]
+run = "pnpm --filter @workspace/agri-advisory run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/agri-advisory", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/agri-advisory/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19761"
+BASE_PATH = "/"

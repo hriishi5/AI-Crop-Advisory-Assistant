@@ -1,0 +1,819 @@
+# AI-Powered Agriculture Crop Advisory Assistant — Master Build Prompt
+
+## 1. Header & System Persona Role
+
+You are a **Senior Full-Stack Engineer and AI Systems Architect** operating inside an autonomous coding agent environment (Cursor / Claude Code / Replit Agent / Bolt). You have full read/write access to the project's filesystem, terminal, package manager, and database provisioning tools. You do not ask clarifying questions — you make sound engineering decisions and proceed. You build production-grade, deployable software, not prototypes or demos. Every file you generate must be complete, syntactically valid, and free of `// TODO`, `// implement later`, or placeholder logic. If a decision is not specified below, you resolve it using industry best practice and document the decision in a code comment at the point of use.
+
+Your task in this session is to build, end-to-end, the **AI-Powered Agriculture Crop Advisory Assistant** described in this document.
+
+---
+
+## 2. Core Mission Directive
+
+Build a fully functional, multi-user, AI-driven web application that helps farmers and agricultural extension workers get **personalized, real-time crop advisory** — covering crop selection, soil health interpretation, irrigation and fertilizer scheduling, pest/disease diagnosis from symptom text, and market-linked sowing/harvest timing — by combining structured farmer input (location, soil type, land size, season, crop history) with Google's Gemini AI reasoning, and persisting every advisory session so farmers can revisit past recommendations, track their farms, and see how conditions change season to season.
+
+Do not stop at a chat interface. Build a structured, form-driven advisory workflow backed by a normalized relational schema, secure multi-tenant data isolation, and typed request/response validation end-to-end.
+
+---
+
+## 3. Product Goal
+
+Enable a smallholder or mid-size farmer with minimal technical literacy to:
+
+1. Register a free account and add one or more **farms** (plot-level records with location, soil type, and area).
+2. Submit a **crop advisory request** for a farm by filling a short structured form (season, budget tier, irrigation availability, previous crop, known soil issues).
+3. Receive a **structured AI-generated advisory report** — not a wall of text — containing ranked crop recommendations, a fertilizer/irrigation schedule, risk flags, and estimated cost-to-yield guidance, each grounded in the specific inputs supplied.
+4. Separately submit a **pest/disease diagnostic query** by describing symptoms (and optionally uploading a photo description as text) and get a structured diagnosis with confidence level, likely causes, and organic + chemical treatment options.
+5. View a **dashboard** of all past advisories per farm, so recommendations compound in usefulness over multiple seasons.
+6. Have full data isolation — one farmer must never be able to see another farmer's farms, advisories, or diagnostic history, enforced at the database layer, not just the UI.
+
+---
+
+## 4. Mandatory Features
+
+- Email + password authentication (registration, login, logout, session persistence via JWT in HTTP-only cookies).
+- Farmer profile management (name, phone, primary language, default location).
+- Farm CRUD: create, list, edit, archive (soft-delete) farms belonging to the logged-in farmer only.
+- Crop Advisory workflow: structured intake form → Gemini-powered structured recommendation → persisted advisory record → viewable history.
+- Pest & Disease Diagnostic workflow: structured symptom intake form → Gemini-powered structured diagnosis → persisted diagnostic record → viewable history.
+- Dashboard aggregating: total farms, total advisories generated, most recent advisory per farm, and any open/unresolved diagnostic flags.
+- Advisory detail view with full breakdown (recommended crops, fertilizer plan, irrigation plan, risk factors, confidence score).
+- Diagnostic detail view with full breakdown (likely disease/pest, confidence, symptoms matched, treatment plan, prevention tips).
+- Search/filter advisory and diagnostic history by farm, crop, and date range.
+- Responsive UI (mobile-first — this is a farmer-facing tool, majority usage will be on Android phones in the field).
+- Graceful handling and clear surfacing of AI service failures (timeout, rate limit, malformed response) without ever showing the user a raw stack trace.
+- Server-side rate limiting on all AI-invoking endpoints to control cost and abuse.
+
+---
+
+## 5. Technology Requirements
+
+| Layer | Technology | Notes |
+|---|---|---|
+| Frontend | **React.js** (Vite, TypeScript) | Functional components + hooks only, no class components |
+| Styling | **Tailwind CSS** | Utility-first, mobile-first breakpoints, no separate CSS-in-JS libs |
+| Routing (frontend) | React Router v6 | Nested routes, protected route wrapper |
+| Backend | **Node.js + Express.js** (TypeScript) | REST API, layered architecture (routes → controllers → services → db) |
+| Database | **Replit Postgres** (PostgreSQL) | Provisioned via Replit's built-in Postgres, accessed via `pg` / `node-postgres` connection pool or Drizzle ORM |
+| AI SDK | **@google/genai** | Official Google Gen AI SDK, server-side only, Gemini structured JSON output mode |
+| Validation | **Zod** | Shared schema definitions for all request bodies, AI response parsing, and form validation |
+| Auth | `jsonwebtoken` + `bcrypt` | JWT in HTTP-only, `Secure`, `SameSite=Strict` cookies |
+| State/data fetching | TanStack Query (React Query) | Server state caching, mutation handling, optimistic UI where relevant |
+| Forms | React Hook Form + Zod resolver | Client-side validation mirrors server-side Zod schemas |
+
+No other frontend framework, ORM, or AI SDK substitution is permitted. Do not introduce Next.js, Prisma, or OpenAI SDK — the stack above is fixed.
+
+---
+
+## 6. Application Pages (Routes)
+
+| Route | Access | Purpose |
+|---|---|---|
+| `/` | Public | Landing page — product pitch, CTA to register/login |
+| `/register` | Public | Farmer signup form |
+| `/login` | Public | Farmer login form |
+| `/dashboard` | Protected | Summary cards: farms, advisories, diagnostics, recent activity |
+| `/farms` | Protected | List of the farmer's farms with add/edit/archive |
+| `/farms/:farmId` | Protected | Single farm detail — advisory + diagnostic history for that farm |
+| `/farms/:farmId/advisory/new` | Protected | Structured crop advisory intake form |
+| `/advisory/:advisoryId` | Protected | Full structured advisory report view |
+| `/farms/:farmId/diagnose/new` | Protected | Structured pest/disease diagnostic intake form |
+| `/diagnostic/:diagnosticId` | Protected | Full structured diagnostic report view |
+| `/history` | Protected | Global searchable/filterable list of all advisories + diagnostics |
+| `/profile` | Protected | Edit farmer profile |
+| `*` | Public | 404 page |
+
+---
+
+## 7. User Flow
+
+1. **Landing → Register/Login** → JWT issued, stored as HTTP-only cookie → redirect to `/dashboard`.
+2. **Dashboard** shows "Add your first farm" prompt if the farmer has zero farms.
+3. Farmer navigates to **`/farms`**, adds a farm (name, village/district/state, GPS-optional, soil type, area in acres, primary irrigation source).
+4. From a farm's detail page, farmer clicks **"Get Crop Advisory"** → structured intake form (`/farms/:farmId/advisory/new`) → submit → backend calls Gemini with a structured system + user prompt → Gemini returns strict JSON → backend validates with Zod → persists to `crop_advisories` table → frontend redirects to `/advisory/:advisoryId` to render the structured report.
+5. From the same farm, farmer can click **"Diagnose a Problem"** → symptom intake form (`/farms/:farmId/diagnose/new`) → submit → backend calls Gemini with a diagnostic system + user prompt → Gemini returns strict JSON → backend validates with Zod → persists to `pest_diagnostics` table → frontend redirects to `/diagnostic/:diagnosticId`.
+6. Farmer can revisit `/history` at any time to search past advisories/diagnostics across all their farms, filtered by crop, farm, or date.
+7. Farmer can edit their profile at `/profile` at any time; changes do not require re-authentication.
+8. On logout, the JWT cookie is cleared and the farmer is redirected to `/`.
+
+---
+
+## 8. Target Domains & Categorization
+
+The AI advisory logic must reason within these fixed domains — do not let the model free-associate outside them:
+
+- **Crop categories:** Cereals (rice, wheat, maize, millets), Pulses (chickpea, pigeon pea, lentil), Oilseeds (groundnut, mustard, soybean, sunflower), Vegetables (tomato, onion, potato, brinjal, okra), Cash crops (cotton, sugarcane), Fruits (banana, mango, citrus — for perennial-plot advisories only).
+- **Soil types:** Alluvial, Black (regur), Red, Laterite, Arid/Desert, Mountain/Forest, Saline/Alkaline.
+- **Seasons:** Kharif (June–Oct), Rabi (Oct–Mar), Zaid/Summer (Mar–June).
+- **Irrigation availability:** Rainfed only, Canal, Borewell/Tubewell, Drip/Sprinkler, Mixed.
+- **Budget tiers:** Low (minimal input cost, subsistence-oriented), Medium (balanced input/output), High (commercial, high-input high-yield).
+- **Pest/disease query categories:** Fungal, Bacterial, Viral, Insect/Pest infestation, Nutrient deficiency (symptom overlap with disease), Nematode, Weed competition.
+
+This taxonomy is authoritative and drives both form dropdown options and the enum constraints in the database schema and Zod schemas.
+
+---
+
+## 9. Form & Advisory Configuration
+
+### 9.1 Crop Advisory Intake Form Fields
+- `farmId` (hidden, from route param)
+- `season` — enum: `kharif | rabi | zaid`
+- `soilTypeOverride` — optional enum, defaults to the farm's stored soil type
+- `landAreaAcres` — number, optional override of farm default
+- `irrigationAvailability` — enum from Section 8
+- `budgetTier` — enum: `low | medium | high`
+- `previousCrop` — free text, optional
+- `knownSoilIssues` — multi-select checkboxes: `waterlogging | salinity | low_organic_matter | erosion | none`
+- `farmerGoal` — enum: `maximize_yield | maximize_profit | minimize_risk | soil_health_recovery`
+- `additionalNotes` — free text, max 500 chars, optional
+
+### 9.2 Pest/Disease Diagnostic Intake Form Fields
+- `farmId` (hidden, from route param)
+- `affectedCrop` — text/select, required
+- `growthStage` — enum: `seedling | vegetative | flowering | fruiting | maturity`
+- `symptomCategory` — enum from Section 8 pest/disease categories (farmer's best guess, optional — `unsure` allowed)
+- `symptomDescription` — free text, required, min 20 chars, max 1000 chars ("Describe what you see: leaf color, spots, wilting, insects, etc.")
+- `affectedPlantPart` — multi-select: `leaves | stem | roots | fruit | flower | whole_plant`
+- `daysSinceSymptomsAppeared` — number, optional
+- `weatherRecent` — enum: `dry | normal_rain | heavy_rain | unusual_heat | unusual_cold`, optional
+
+---
+
+## 10. Database Schema (Production SQL for PostgreSQL)
+
+```sql
+-- ============================================================
+-- AI-Powered Agriculture Crop Advisory Assistant — Schema
+-- ============================================================
+
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- ---------- FARMERS ----------
+CREATE TABLE farmers (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    full_name         VARCHAR(120) NOT NULL,
+    email             VARCHAR(255) NOT NULL UNIQUE,
+    password_hash     TEXT NOT NULL,
+    phone             VARCHAR(20),
+    primary_language  VARCHAR(40) DEFAULT 'en',
+    default_state     VARCHAR(80),
+    default_district  VARCHAR(80),
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ---------- FARMS ----------
+CREATE TABLE farms (
+    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    farmer_id             UUID NOT NULL REFERENCES farmers(id) ON DELETE CASCADE,
+    name                  VARCHAR(120) NOT NULL,
+    village               VARCHAR(120),
+    district              VARCHAR(80),
+    state                 VARCHAR(80),
+    gps_lat               NUMERIC(9,6),
+    gps_lng               NUMERIC(9,6),
+    soil_type             VARCHAR(30) NOT NULL CHECK (soil_type IN
+                              ('alluvial','black','red','laterite','arid','mountain','saline_alkaline')),
+    area_acres            NUMERIC(8,2) NOT NULL CHECK (area_acres > 0),
+    primary_irrigation    VARCHAR(30) NOT NULL CHECK (primary_irrigation IN
+                              ('rainfed','canal','borewell','drip_sprinkler','mixed')),
+    is_archived           BOOLEAN NOT NULL DEFAULT false,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_farms_farmer_id ON farms(farmer_id);
+
+-- ---------- CROP ADVISORIES ----------
+CREATE TABLE crop_advisories (
+    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    farm_id               UUID NOT NULL REFERENCES farms(id) ON DELETE CASCADE,
+    farmer_id             UUID NOT NULL REFERENCES farmers(id) ON DELETE CASCADE,
+    season                VARCHAR(10) NOT NULL CHECK (season IN ('kharif','rabi','zaid')),
+    soil_type_used        VARCHAR(30) NOT NULL,
+    land_area_acres_used  NUMERIC(8,2) NOT NULL,
+    irrigation_used        VARCHAR(30) NOT NULL,
+    budget_tier           VARCHAR(10) NOT NULL CHECK (budget_tier IN ('low','medium','high')),
+    previous_crop         VARCHAR(80),
+    known_soil_issues     TEXT[] DEFAULT '{}',
+    farmer_goal            VARCHAR(30) NOT NULL,
+    additional_notes       TEXT,
+    ai_raw_response         JSONB NOT NULL,
+    recommended_crops       JSONB NOT NULL,
+    fertilizer_plan          JSONB NOT NULL,
+    irrigation_plan          JSONB NOT NULL,
+    risk_factors             JSONB NOT NULL,
+    confidence_score        NUMERIC(3,2) CHECK (confidence_score BETWEEN 0 AND 1),
+    model_version            VARCHAR(60) NOT NULL,
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_advisories_farm_id ON crop_advisories(farm_id);
+CREATE INDEX idx_advisories_farmer_id ON crop_advisories(farmer_id);
+CREATE INDEX idx_advisories_created_at ON crop_advisories(created_at DESC);
+
+-- ---------- PEST / DISEASE DIAGNOSTICS ----------
+CREATE TABLE pest_diagnostics (
+    id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    farm_id                   UUID NOT NULL REFERENCES farms(id) ON DELETE CASCADE,
+    farmer_id                 UUID NOT NULL REFERENCES farmers(id) ON DELETE CASCADE,
+    affected_crop             VARCHAR(80) NOT NULL,
+    growth_stage              VARCHAR(20) NOT NULL CHECK (growth_stage IN
+                                  ('seedling','vegetative','flowering','fruiting','maturity')),
+    symptom_category          VARCHAR(30),
+    symptom_description        TEXT NOT NULL,
+    affected_plant_part        TEXT[] NOT NULL,
+    days_since_symptoms        INTEGER,
+    weather_recent              VARCHAR(20),
+    ai_raw_response              JSONB NOT NULL,
+    likely_diagnosis             VARCHAR(150) NOT NULL,
+    confidence_score             NUMERIC(3,2) CHECK (confidence_score BETWEEN 0 AND 1),
+    possible_causes                JSONB NOT NULL,
+    treatment_plan                 JSONB NOT NULL,
+    prevention_tips                 JSONB NOT NULL,
+    is_resolved                     BOOLEAN NOT NULL DEFAULT false,
+    model_version                    VARCHAR(60) NOT NULL,
+    created_at                        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_diagnostics_farm_id ON pest_diagnostics(farm_id);
+CREATE INDEX idx_diagnostics_farmer_id ON pest_diagnostics(farmer_id);
+CREATE INDEX idx_diagnostics_created_at ON pest_diagnostics(created_at DESC);
+
+-- ---------- UPDATED_AT TRIGGER ----------
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_farmers_updated_at BEFORE UPDATE ON farmers
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER trg_farms_updated_at BEFORE UPDATE ON farms
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+```
+
+---
+
+## 11. Row Level Security (RLS) / Data Isolation Rules
+
+Replit Postgres connections in this stack are made via a pooled service connection, not per-user database roles, so **true Postgres RLS policies are optional but recommended as defense-in-depth**. Implement both layers:
+
+### 11.1 Application-layer isolation (mandatory)
+Every single query touching `farms`, `crop_advisories`, or `pest_diagnostics` MUST be scoped by `farmer_id` (or a join through `farm_id → farms.farmer_id`) derived **only** from the authenticated JWT session — never from a client-supplied `farmerId` field in the request body or query string. Write this as a single reusable data-access helper (e.g. `assertFarmOwnership(farmId, farmerId)`) called at the top of every controller that operates on a farm-scoped resource, before any DB write or read.
+
+### 11.2 Database-layer RLS (defense-in-depth, implement if using per-role connections; otherwise document as future hardening)
+```sql
+ALTER TABLE farms ENABLE ROW LEVEL SECURITY;
+ALTER TABLE crop_advisories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pest_diagnostics ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY farms_isolation ON farms
+    USING (farmer_id = current_setting('app.current_farmer_id')::uuid);
+
+CREATE POLICY advisories_isolation ON crop_advisories
+    USING (farmer_id = current_setting('app.current_farmer_id')::uuid);
+
+CREATE POLICY diagnostics_isolation ON pest_diagnostics
+    USING (farmer_id = current_setting('app.current_farmer_id')::uuid);
+```
+If RLS is enabled, the Express connection middleware must run `SET app.current_farmer_id = '<uuid>'` at the start of every authenticated request using a transaction-scoped `SET LOCAL` inside the connection pool client, sourced from the verified JWT payload.
+
+### 11.3 Non-negotiable rules
+- Never trust a `farmerId` or `farmId` passed in a request body for authorization decisions — only for identifying *which* resource, after ownership is verified server-side.
+- All archive/delete operations are soft-deletes (`is_archived = true`) — never hard `DELETE` a farm with advisory history.
+- Passwords are hashed with `bcrypt` (cost factor 12) and never logged, returned in any API response, or stored in plaintext anywhere, including error logs.
+
+---
+
+## 12. Backend API Routes
+
+Base path: `/api`
+
+### Auth
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| POST | `/auth/register` | Public | Create farmer account, hash password, issue JWT cookie |
+| POST | `/auth/login` | Public | Verify credentials, issue JWT cookie |
+| POST | `/auth/logout` | Protected | Clear JWT cookie |
+| GET | `/auth/me` | Protected | Return current farmer's profile |
+
+### Farmer Profile
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| PATCH | `/profile` | Protected | Update name, phone, language, default location |
+
+### Farms
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| GET | `/farms` | Protected | List non-archived farms for current farmer |
+| POST | `/farms` | Protected | Create a farm |
+| GET | `/farms/:farmId` | Protected | Get one farm (ownership-checked) |
+| PATCH | `/farms/:farmId` | Protected | Update a farm (ownership-checked) |
+| DELETE | `/farms/:farmId` | Protected | Archive (soft-delete) a farm (ownership-checked) |
+
+### Crop Advisory
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| POST | `/farms/:farmId/advisories` | Protected | Submit intake form → call Gemini → validate → persist → return record |
+| GET | `/farms/:farmId/advisories` | Protected | List advisories for a farm |
+| GET | `/advisories/:advisoryId` | Protected | Get one advisory (ownership-checked via farmer_id) |
+
+### Pest/Disease Diagnostics
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| POST | `/farms/:farmId/diagnostics` | Protected | Submit symptom form → call Gemini → validate → persist → return record |
+| GET | `/farms/:farmId/diagnostics` | Protected | List diagnostics for a farm |
+| GET | `/diagnostics/:diagnosticId` | Protected | Get one diagnostic (ownership-checked) |
+| PATCH | `/diagnostics/:diagnosticId/resolve` | Protected | Mark `is_resolved = true` |
+
+### History / Dashboard
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| GET | `/history` | Protected | Combined, filterable advisories + diagnostics (`?farmId=&crop=&from=&to=&type=`) |
+| GET | `/dashboard/summary` | Protected | Counts + most recent advisory per farm + unresolved diagnostic count |
+
+Every protected route passes through an `authenticate` middleware that verifies the JWT from the HTTP-only cookie, attaches `req.farmerId`, and rejects with `401` on failure. Every resource-specific route additionally passes through an ownership-check middleware/helper before touching the database.
+
+---
+
+## 13. Gemini SDK Setup & Server-Side Security
+
+- The `@google/genai` client is instantiated **exactly once**, server-side only, in `server/services/geminiClient.ts`. It is never imported into any frontend file, and the API key is never sent to the client in any form (no env var prefixed `VITE_` or `REACT_APP_` for this key).
+- API key is read from `process.env.GEMINI_API_KEY` at server startup; if missing, the server fails fast with a clear startup error rather than failing silently on first request.
+- All Gemini calls use the SDK's structured/JSON output mode (`responseMimeType: "application/json"` with a `responseSchema`) so the model is constrained to emit valid JSON matching the shapes defined in Section 15 — never free-form text that is then regex-parsed.
+- Every Gemini call is wrapped in a `try/catch` with:
+  - A request timeout (10s) via `AbortController`.
+  - Exactly one retry on transient failure (5xx, timeout) with exponential backoff, then fail to a typed `AIServiceError`.
+  - The raw model response is stored in the `ai_raw_response` JSONB column for auditability, even though the structured/parsed fields are what the frontend renders.
+- Server-side rate limiting (`express-rate-limit`) is applied specifically to `/advisories` and `/diagnostics` POST routes — e.g. 10 requests per farmer per hour — separate from any general API rate limit, because these are the cost-bearing AI-invoking endpoints.
+- Input passed into the Gemini prompt is always the **validated, typed Zod output** of the intake form — never raw unvalidated `req.body` — to prevent prompt injection via malformed or oversized fields.
+
+---
+
+## 14. AI System Prompt
+
+Two distinct system prompts are used — one per workflow — each passed as the `systemInstruction` on the Gemini client call.
+
+### 14.1 Crop Advisory System Prompt
+```
+You are an expert agronomist and agricultural extension officer with deep,
+practical knowledge of Indian farming conditions, soil science, crop
+rotation, and input economics. You give advice calibrated to smallholder
+and mid-size farmers, not industrial agribusiness.
+
+Rules you must follow:
+1. Base every recommendation strictly on the structured inputs provided —
+   season, soil type, land area, irrigation availability, budget tier,
+   previous crop, known soil issues, and the farmer's stated goal.
+2. Recommend 2 to 4 crops, ranked, each with a clear justification tied to
+   the specific inputs (not generic crop trivia).
+3. Never recommend a crop requiring irrigation the farmer does not have
+   available.
+4. Flag any risk implied by the previous crop (e.g. same-family crop
+   rotation disease risk, nutrient depletion) explicitly in risk_factors.
+5. Fertilizer and irrigation plans must be stage-based (sowing, vegetative,
+   flowering, maturity) and quantified in practical units (kg/acre,
+   liters/acre or irrigation frequency), not vague ("water regularly").
+6. If known_soil_issues indicates salinity, waterlogging, or low organic
+   matter, that constraint overrides yield-maximizing crop choices.
+7. Output ONLY valid JSON matching the exact schema provided. No prose
+   outside the JSON. No markdown code fences.
+8. Set confidence_score lower (below 0.6) when inputs are sparse or
+   conflicting; do not overstate certainty.
+```
+
+### 14.2 Pest/Disease Diagnostic System Prompt
+```
+You are an expert plant pathologist and entomologist specializing in
+field-crop and vegetable pest/disease diagnosis from farmer-reported
+symptoms, without laboratory confirmation.
+
+Rules you must follow:
+1. Reason from the described symptoms, affected plant part, growth stage,
+   days since onset, and recent weather to identify the most likely cause.
+2. Always list at least 2 possible_causes ranked by likelihood, even when
+   one is dominant — symptom-based diagnosis without lab testing is
+   inherently uncertain, and you must reflect that honestly.
+3. Distinguish clearly between disease, pest, and nutrient-deficiency
+   causes when symptoms overlap (e.g. yellowing leaves can be nitrogen
+   deficiency OR a viral infection) rather than picking one prematurely.
+4. Every treatment_plan must include both an organic/cultural option and a
+   chemical option where applicable, each with dosage or application
+   guidance in practical terms.
+5. Always include prevention_tips for future seasons, not just treatment
+   for the current outbreak.
+6. If symptom_description is vague or generic, set confidence_score below
+   0.5 and explicitly recommend the farmer consult a local agricultural
+   extension officer or send a photo for visual confirmation.
+7. Output ONLY valid JSON matching the exact schema provided. No prose
+   outside the JSON. No markdown code fences.
+8. Never recommend a banned or restricted-use pesticide.
+```
+
+---
+
+## 15. Detailed AI Prompts (with required JSON Schemas)
+
+### 15.1 Crop Advisory — User Prompt Template
+```
+Generate a crop advisory for the following farm and farmer inputs:
+
+Season: {{season}}
+Soil type: {{soilTypeUsed}}
+Land area: {{landAreaAcres}} acres
+Irrigation availability: {{irrigationUsed}}
+Budget tier: {{budgetTier}}
+Previous crop grown: {{previousCrop | "none reported"}}
+Known soil issues: {{knownSoilIssues | "none reported"}}
+Farmer's primary goal: {{farmerGoal}}
+Additional notes from farmer: {{additionalNotes | "none"}}
+
+Respond with JSON only, matching this exact schema:
+{
+  "recommended_crops": [
+    {
+      "crop_name": string,
+      "rank": number,
+      "suitability_reason": string,
+      "estimated_yield_per_acre": string,
+      "estimated_input_cost_per_acre": string,
+      "estimated_revenue_per_acre": string
+    }
+  ],
+  "fertilizer_plan": {
+    "sowing_stage": string,
+    "vegetative_stage": string,
+    "flowering_stage": string,
+    "maturity_stage": string
+  },
+  "irrigation_plan": {
+    "sowing_stage": string,
+    "vegetative_stage": string,
+    "flowering_stage": string,
+    "maturity_stage": string,
+    "frequency_summary": string
+  },
+  "risk_factors": [
+    { "risk": string, "severity": "low" | "medium" | "high", "mitigation": string }
+  ],
+  "confidence_score": number
+}
+```
+
+### 15.2 Pest/Disease Diagnostic — User Prompt Template
+```
+Diagnose the following crop health issue:
+
+Affected crop: {{affectedCrop}}
+Growth stage: {{growthStage}}
+Farmer-guessed category: {{symptomCategory | "unsure"}}
+Symptom description: {{symptomDescription}}
+Affected plant part(s): {{affectedPlantPart}}
+Days since symptoms appeared: {{daysSinceSymptomsAppeared | "not specified"}}
+Recent weather: {{weatherRecent | "not specified"}}
+
+Respond with JSON only, matching this exact schema:
+{
+  "likely_diagnosis": string,
+  "possible_causes": [
+    { "cause": string, "type": "fungal" | "bacterial" | "viral" | "insect_pest" | "nutrient_deficiency" | "nematode" | "weed_competition", "likelihood": "low" | "medium" | "high" }
+  ],
+  "treatment_plan": {
+    "organic_option": string,
+    "chemical_option": string,
+    "application_guidance": string
+  },
+  "prevention_tips": [string],
+  "confidence_score": number
+}
+```
+
+Both templates are rendered server-side with the validated Zod-parsed intake data before being sent as the `contents` of the Gemini request. The `responseSchema` passed to the SDK must mirror these JSON shapes exactly so the model is structurally constrained.
+
+---
+
+## 16. Zod Validation Requirements
+
+Define all schemas in a single shared file, `shared/schemas.ts`, imported by both frontend (form validation via `@hookform/resolvers/zod`) and backend (request body validation middleware).
+
+```typescript
+import { z } from "zod";
+
+export const seasonEnum = z.enum(["kharif", "rabi", "zaid"]);
+export const soilTypeEnum = z.enum([
+  "alluvial", "black", "red", "laterite", "arid", "mountain", "saline_alkaline",
+]);
+export const irrigationEnum = z.enum([
+  "rainfed", "canal", "borewell", "drip_sprinkler", "mixed",
+]);
+export const budgetTierEnum = z.enum(["low", "medium", "high"]);
+export const farmerGoalEnum = z.enum([
+  "maximize_yield", "maximize_profit", "minimize_risk", "soil_health_recovery",
+]);
+export const growthStageEnum = z.enum([
+  "seedling", "vegetative", "flowering", "fruiting", "maturity",
+]);
+export const symptomCategoryEnum = z.enum([
+  "fungal", "bacterial", "viral", "insect_pest",
+  "nutrient_deficiency", "nematode", "weed_competition", "unsure",
+]);
+
+export const registerSchema = z.object({
+  fullName: z.string().min(2).max(120),
+  email: z.string().email(),
+  password: z.string().min(8).max(72),
+  phone: z.string().min(10).max(15).optional(),
+});
+
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+export const farmSchema = z.object({
+  name: z.string().min(2).max(120),
+  village: z.string().max(120).optional(),
+  district: z.string().max(80).optional(),
+  state: z.string().max(80).optional(),
+  gpsLat: z.number().min(-90).max(90).optional(),
+  gpsLng: z.number().min(-180).max(180).optional(),
+  soilType: soilTypeEnum,
+  areaAcres: z.number().positive().max(100000),
+  primaryIrrigation: irrigationEnum,
+});
+
+export const advisoryIntakeSchema = z.object({
+  season: seasonEnum,
+  soilTypeOverride: soilTypeEnum.optional(),
+  landAreaAcres: z.number().positive().optional(),
+  irrigationAvailability: irrigationEnum,
+  budgetTier: budgetTierEnum,
+  previousCrop: z.string().max(80).optional(),
+  knownSoilIssues: z.array(
+    z.enum(["waterlogging", "salinity", "low_organic_matter", "erosion", "none"])
+  ).default([]),
+  farmerGoal: farmerGoalEnum,
+  additionalNotes: z.string().max(500).optional(),
+});
+
+export const diagnosticIntakeSchema = z.object({
+  affectedCrop: z.string().min(2).max(80),
+  growthStage: growthStageEnum,
+  symptomCategory: symptomCategoryEnum.optional(),
+  symptomDescription: z.string().min(20).max(1000),
+  affectedPlantPart: z.array(
+    z.enum(["leaves", "stem", "roots", "fruit", "flower", "whole_plant"])
+  ).min(1),
+  daysSinceSymptomsAppeared: z.number().int().nonnegative().optional(),
+  weatherRecent: z.enum([
+    "dry", "normal_rain", "heavy_rain", "unusual_heat", "unusual_cold",
+  ]).optional(),
+});
+
+// ---- AI response schemas (used to validate Gemini's JSON before persisting) ----
+export const advisoryAIResponseSchema = z.object({
+  recommended_crops: z.array(z.object({
+    crop_name: z.string(),
+    rank: z.number().int().positive(),
+    suitability_reason: z.string(),
+    estimated_yield_per_acre: z.string(),
+    estimated_input_cost_per_acre: z.string(),
+    estimated_revenue_per_acre: z.string(),
+  })).min(1).max(4),
+  fertilizer_plan: z.object({
+    sowing_stage: z.string(),
+    vegetative_stage: z.string(),
+    flowering_stage: z.string(),
+    maturity_stage: z.string(),
+  }),
+  irrigation_plan: z.object({
+    sowing_stage: z.string(),
+    vegetative_stage: z.string(),
+    flowering_stage: z.string(),
+    maturity_stage: z.string(),
+    frequency_summary: z.string(),
+  }),
+  risk_factors: z.array(z.object({
+    risk: z.string(),
+    severity: z.enum(["low", "medium", "high"]),
+    mitigation: z.string(),
+  })),
+  confidence_score: z.number().min(0).max(1),
+});
+
+export const diagnosticAIResponseSchema = z.object({
+  likely_diagnosis: z.string(),
+  possible_causes: z.array(z.object({
+    cause: z.string(),
+    type: symptomCategoryEnum.exclude(["unsure"]),
+    likelihood: z.enum(["low", "medium", "high"]),
+  })).min(1),
+  treatment_plan: z.object({
+    organic_option: z.string(),
+    chemical_option: z.string(),
+    application_guidance: z.string(),
+  }),
+  prevention_tips: z.array(z.string()).min(1),
+  confidence_score: z.number().min(0).max(1),
+});
+```
+
+If Gemini's JSON output fails Zod validation, the backend must retry the call once with an appended clarifying instruction ("Your previous response did not match the required schema; return ONLY valid JSON matching the schema exactly"), and if it fails again, return a typed `502 AI_RESPONSE_INVALID` error to the frontend rather than persisting malformed data.
+
+---
+
+## 17. Frontend Components List
+
+**Layout & Navigation**
+- `AppShell` (header, mobile bottom-nav, sidebar on desktop)
+- `ProtectedRoute` (auth guard wrapper)
+- `LoadingSpinner`, `ErrorBoundary`, `EmptyState`
+
+**Auth**
+- `RegisterForm`, `LoginForm`
+
+**Dashboard**
+- `DashboardSummaryCards` (farm count, advisory count, diagnostic count, unresolved flags)
+- `RecentActivityList`
+
+**Farms**
+- `FarmList`, `FarmCard`, `FarmForm` (create/edit, shared), `FarmDetailHeader`
+
+**Crop Advisory**
+- `AdvisoryIntakeForm` (multi-field, React Hook Form + Zod resolver)
+- `AdvisoryReportView` (renders `recommended_crops` as ranked cards, `fertilizer_plan`/`irrigation_plan` as stage timelines, `risk_factors` as flagged badges, `confidence_score` as a meter)
+- `AdvisoryHistoryList`
+
+**Pest/Disease Diagnostics**
+- `DiagnosticIntakeForm`
+- `DiagnosticReportView` (renders `likely_diagnosis`, `possible_causes` ranked, `treatment_plan` as organic/chemical tabs, `prevention_tips` as a checklist, `is_resolved` toggle)
+- `DiagnosticHistoryList`
+
+**Shared/History**
+- `HistoryFilterBar` (farm, crop, date range, type filters)
+- `CombinedHistoryTable`
+- `ConfidenceMeter` (shared visual component for both report types)
+- `AIServiceErrorBanner` (shown on Gemini failure — friendly retry prompt, never a raw error)
+
+**Profile**
+- `ProfileForm`
+
+---
+
+## 18. Security Requirements
+
+- Passwords hashed with `bcrypt`, cost factor ≥ 12; never returned in any API response.
+- JWT stored in `HttpOnly`, `Secure`, `SameSite=Strict` cookie — never in `localStorage`.
+- All mutating endpoints (`POST`, `PATCH`, `DELETE`) require CSRF protection appropriate to cookie-based auth (double-submit token or `SameSite=Strict` + origin check).
+- All inputs validated server-side with Zod even though client-side validation exists — client validation is a UX convenience, never a security boundary.
+- Ownership checks (Section 11) run before every read or write to `farms`, `crop_advisories`, `pest_diagnostics`.
+- Rate limiting on `/auth/login` (prevent brute force) and on AI-invoking routes (prevent cost abuse).
+- Helmet middleware for standard HTTP security headers.
+- No secrets, API keys, or connection strings in frontend bundles — audited via a build-time check that fails the build if `GEMINI_API_KEY` or `DATABASE_URL` appear in any `dist/` output.
+- SQL access exclusively through parameterized queries or the query builder/ORM — string-concatenated SQL is forbidden.
+- Generic error messages returned to the client (`"Something went wrong. Please try again."`); full error detail logged server-side only.
+
+---
+
+## 19. Environment Variables Template
+
+```env
+# Server
+NODE_ENV=development
+PORT=3000
+
+# Database (Replit Postgres provisions this automatically)
+DATABASE_URL=postgresql://user:password@host:5432/dbname
+
+# Auth
+JWT_SECRET=replace-with-a-long-random-string
+JWT_EXPIRES_IN=7d
+COOKIE_SECRET=replace-with-a-long-random-string
+
+# Google Gemini
+GEMINI_API_KEY=replace-with-your-gemini-api-key
+GEMINI_MODEL=gemini-2.5-flash
+
+# Rate limiting
+AI_RATE_LIMIT_PER_HOUR=10
+LOGIN_RATE_LIMIT_PER_15MIN=5
+
+# Frontend (Vite — only non-secret, public values)
+VITE_API_BASE_URL=/api
+```
+
+---
+
+## 20. Suggested Folder Structure
+
+```
+agri-crop-advisory/
+├── client/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── layout/
+│   │   │   ├── auth/
+│   │   │   ├── dashboard/
+│   │   │   ├── farms/
+│   │   │   ├── advisory/
+│   │   │   ├── diagnostics/
+│   │   │   ├── history/
+│   │   │   └── shared/
+│   │   ├── pages/
+│   │   ├── hooks/
+│   │   ├── lib/
+│   │   │   ├── apiClient.ts
+│   │   │   └── queryClient.ts
+│   │   ├── App.tsx
+│   │   ├── main.tsx
+│   │   └── index.css
+│   ├── index.html
+│   ├── tailwind.config.ts
+│   └── vite.config.ts
+├── server/
+│   ├── src/
+│   │   ├── routes/
+│   │   │   ├── auth.routes.ts
+│   │   │   ├── profile.routes.ts
+│   │   │   ├── farms.routes.ts
+│   │   │   ├── advisories.routes.ts
+│   │   │   ├── diagnostics.routes.ts
+│   │   │   └── history.routes.ts
+│   │   ├── controllers/
+│   │   ├── services/
+│   │   │   ├── geminiClient.ts
+│   │   │   ├── advisoryPrompt.service.ts
+│   │   │   └── diagnosticPrompt.service.ts
+│   │   ├── db/
+│   │   │   ├── pool.ts
+│   │   │   ├── schema.sql
+│   │   │   └── queries/
+│   │   ├── middleware/
+│   │   │   ├── authenticate.ts
+│   │   │   ├── ownership.ts
+│   │   │   ├── validate.ts
+│   │   │   └── rateLimit.ts
+│   │   ├── utils/
+│   │   ├── app.ts
+│   │   └── server.ts
+│   └── tsconfig.json
+├── shared/
+│   └── schemas.ts
+├── .env.example
+├── package.json
+└── README.md
+```
+
+---
+
+## 21. Implementation Phases
+
+**Phase 1 — Foundation**
+Scaffold client + server + shared workspaces, configure TypeScript, Tailwind, Vite proxy to Express. Provision Replit Postgres, run `schema.sql`, verify connection pool.
+
+**Phase 2 — Auth & Profile**
+Implement register/login/logout/me, JWT cookie issuance, `authenticate` middleware, `ProtectedRoute` on frontend, `ProfileForm`.
+
+**Phase 3 — Farms CRUD**
+Implement farms routes with ownership middleware, `FarmList`/`FarmForm`/`FarmCard`, farm detail page shell.
+
+**Phase 4 — Crop Advisory Pipeline**
+Build `geminiClient.ts`, advisory system prompt + user prompt template, Zod schemas for intake and AI response, `POST /farms/:farmId/advisories` with retry-on-invalid-JSON logic, `AdvisoryIntakeForm`, `AdvisoryReportView`.
+
+**Phase 5 — Pest/Disease Diagnostic Pipeline**
+Mirror Phase 4 for diagnostics: prompt templates, schemas, route, `DiagnosticIntakeForm`, `DiagnosticReportView`, resolve toggle.
+
+**Phase 6 — Dashboard & History**
+Implement `/dashboard/summary` and `/history` endpoints with filtering, build `DashboardSummaryCards`, `HistoryFilterBar`, `CombinedHistoryTable`.
+
+**Phase 7 — Security Hardening**
+Add rate limiting, Helmet, CSRF protection, generic error handling, audit for secret leakage in the client bundle, confirm ownership checks on every resource route.
+
+**Phase 8 — Polish & QA**
+Mobile responsiveness pass, empty states, loading states, AI failure states, end-to-end manual test of both AI pipelines with varied inputs, verify data isolation with two test farmer accounts.
+
+---
+
+## 22. Acceptance Criteria
+
+- [ ] A new farmer can register, log in, and land on an empty-state dashboard.
+- [ ] A farmer can create, edit, and archive a farm; archived farms disappear from `/farms` but their historical advisories remain accessible.
+- [ ] Submitting the crop advisory intake form produces a persisted, structured report matching the Section 15.1 schema, rendered (not raw JSON) at `/advisory/:advisoryId`.
+- [ ] Submitting the diagnostic intake form produces a persisted, structured report matching the Section 15.2 schema, rendered at `/diagnostic/:diagnosticId`.
+- [ ] A second farmer account cannot view, edit, or enumerate the first farmer's farms, advisories, or diagnostics — verified by direct API call with a valid session but a foreign resource ID (must return `403`/`404`, never `200`).
+- [ ] All AI-invoking endpoints are rate-limited and return a clear, typed error when the limit is hit.
+- [ ] Malformed or schema-violating Gemini output triggers one retry, then a graceful typed error — never a raw crash or unhandled promise rejection.
+- [ ] No secret (`GEMINI_API_KEY`, `JWT_SECRET`, `DATABASE_URL`) appears anywhere in the built client bundle.
+- [ ] `/history` correctly filters combined advisories + diagnostics by farm, crop, date range, and type.
+- [ ] The full UI is usable on a 375px-wide mobile viewport without horizontal scrolling or clipped content.
+- [ ] All Zod schemas in `shared/schemas.ts` are imported by both client forms and server route validation — no schema duplication.
+
+---
+
+## 23. Final Instruction to Coding Agent
+
+Build this application now, phase by phase, in the order given in Section 21. Do not skip the database schema or the Zod validation layer to "get to the UI faster" — this is a data-integrity-critical, multi-tenant application and the isolation guarantees in Section 11 are non-negotiable. Write real, complete, runnable code for every file implied by the folder structure in Section 20 — no stub files, no `// implementation omitted for brevity`. After each phase, verify it runs before proceeding to the next. When you reach Phase 8, run through every item in the Acceptance Criteria checklist explicitly and fix anything that fails before declaring the build complete.
